@@ -60,7 +60,6 @@ class Ant(Widget):
     def search(self):
         self.status = 'search'
         try:
-            #self.vel = Vector((self.waypoint[0] - self.ant.pos[0]) / 100, (self.waypoint[1] - self.ant.pos[1]) / 100)
             self.vel = (self.waypoint[0] - self.ant.pos[0]) / 50, (self.waypoint[1] - self.ant.pos[1]) / 50
             self.ant.pos = Vector(self.vel) + self.ant.pos
             if self.waypoint[0] - 10 <= self.ant.pos[0] <= self.waypoint[0] + 10 and self.waypoint[1] - 10 <= \
@@ -80,14 +79,14 @@ class Ant(Widget):
     def go_to_food(self):
         self.status = 'go_to_food'
         try:
-            #self.vel = Vector((self.food_pos[0] - self.ant.pos[0]) / 100, (self.food_pos[1] - self.ant.pos[1]) / 100)
-            self.vel = (self.food_pos[0] - self.ant.pos[0]) / 50, (self.food_pos[1] - self.ant.pos[1]) / 50
-            self.ant.pos = Vector(self.vel) + self.ant.pos
+            self.waypoint = self.food_pos
+            self.vel = (self.waypoint[0] - self.queen.pos[0]) / 50, (self.waypoint[1] - self.queen.pos[1]) / 50
+            self.queen.pos = Vector(self.vel) + self.queen.pos
         except TypeError:
             pass
 
-        if self.food_pos[0] <= self.ant.pos[0] <= self.food_pos[0] + 10 and self.food_pos[1] <= self.ant.pos[1] <= \
-                self.food_pos[1] + 10 and self.collision is False:
+        distance = Vector(self.ant.pos).distance(self.food_pos)
+        if distance <= 5:
             self.food_pos = None
             self.status = 'search'
 
@@ -100,8 +99,7 @@ class Ant(Widget):
     def return_food(self):
         if self.owning_queen != None and self.food >= 50:
             try:
-                self.waypoint = self.owning_queen.queen.pos
-                #self.vel = Vector((queen_pos[0] - self.ant.pos[0]) / 100, (queen_pos[1] - self.ant.pos[1]) / 100)
+                self.waypoint = self.owning_queen.marker.pos
                 self.vel = (self.waypoint[0] - self.ant.pos[0]) / 50, (self.waypoint[1] - self.ant.pos[1]) / 50
                 self.ant.pos = Vector(self.vel) + self.ant.pos
 
@@ -111,22 +109,21 @@ class Ant(Widget):
             self.status = 'search'
 
     def check_food_collision(self):
-        ant_center_x = self.ant.pos[0] + (self.ant.size[0] / 2)
-        ant_center_y = self.ant.pos[1] + (self.ant.size[1] / 2)
-        self.collision = False
         for i in Game.food_list:
-            if i.food_source.pos[0] - i.random_size <= ant_center_x <= i.food_source.pos[0] + i.random_size and \
-                    i.food_source.pos[1] - i.random_size <= ant_center_y <= i.food_source.pos[1] + i.random_size:
-                self.food_pos = i.food_source.pos
-                self.eat(i)
-                self.collision = True
+            distance = Vector(self.ant.pos).distance(i.food_source.pos)
+            if distance <= i.random_size:
+                if i.size[0] > 0:
+                    self.food_pos = i.food_source.pos
+                    self.eat(i)
+                    self.collision = True
             else:
                 self.status = 'search'
                 self.collision = False
 
     def eat(self, i):
         self.status = 'eat'
-        self.ant.pos = i.food_source.pos[0] - 10, i.food_source.pos[1] - 10
+        self.waypoint = i.food_source.pos
+        self.vel = (self.waypoint[0] - self.ant.pos[0]) / 50, (self.waypoint[1] - self.ant.pos[1]) / 50
         i.random_size -= .4
         self.food += .5
         self.status = 'search'
@@ -135,9 +132,9 @@ class Ant(Widget):
         self.food -= .01
         if self.status is None:
             self.status = 'search'
-        elif self.status == 'search': # and self.food_pos is None
+        elif self.status == 'search':
             self.search()
-        elif self.status == 'go_to_food': # or self.food_pos is not None
+        elif self.status == 'go_to_food':
             self.go_to_food()
         elif self.status == 'eat':
             self.check_food_collision()
@@ -166,7 +163,6 @@ class Ant(Widget):
             self.bump_timer -= 1
         elif self.bump_timer == 0:
             self.x_modifier = None
-            #self.modifier = None
             self.red = self.red
             self.blue = self.blue
             self.green = self.green
@@ -183,7 +179,6 @@ class Queen(Widget):
     queen_alive = True
     id = None
 
-
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.id = random.randint(1, 100)
@@ -199,7 +194,7 @@ class Queen(Widget):
         Color(self.red, self.blue, self.green)
         self.queen = Ellipse(size=(30, 30), pos=(self.position[0], self.position[1]))
         Color(self.red, self.blue, self.green)
-        self.marker = Ellipse(size=(2, 2), pos=(self.queen.pos[0], self.queen.pos[1]))
+        self.marker = Ellipse(size=(1, 1), pos=(self.queen.pos[0], self.queen.pos[1]))
         self.collision = False
 
     def generate_random(self):
@@ -244,9 +239,9 @@ class Queen(Widget):
 
     def eat(self, i):
         self.status = 'eat'
-        self.vel = (i.food_source.pos[0] - self.queen.pos[0]) / 3, (i.food_source.pos[1] - self.queen.pos[1]) / 3
+        self.waypoint = i.food_source.pos
+        self.vel = (self.waypoint[0] - self.queen.pos[0]) / 50, (self.waypoint[1] - self.queen.pos[1]) / 50
         self.queen.pos = Vector(self.vel) + self.queen.pos
-        #self.queen.pos = i.food_source.pos[0] - 10, i.food_source.pos[1] - 10
         i.random_size -= .4
         self.food += .5
         self.status = 'search'
@@ -336,18 +331,13 @@ class Game(Widget):
         self.initial_queen.gene = 1
         self.queen_list.append(self.initial_queen)
 
+
     def gather_data(self):
         if self.time % 60 == 0:
             self.time_history.append(int(self.time/120))
             self.ant_number_history.append(self.ant_number)
             self.queen_number_history.append(len(self.queen_list))
             self.avg_gene_value_history.append(self.avg_gene_value)
-
-    def plot(self):
-        plt.plot(self.time_history, self.queen_number_history, 'b', label='Number of queens')
-        plt.plot(self.time_history, self.ant_number_history, 'g-', label='Number of ants')
-        plt.plot(self.time_history, self.avg_gene_value_history, 'r--', label='Avarage gene value')
-        plt.show()
 
     def count_ants(self):
         self.ant_number = 0
@@ -422,7 +412,7 @@ class Game(Widget):
                     queen.ants_list.remove(i)
 
     def create_food(self):
-        if len(self.food_list) < 80:
+        if len(self.food_list) < 50:
             with self.canvas:
                 self.new_food = Food_Source()
             self.food_list.append(self.new_food)
@@ -487,7 +477,7 @@ class Game(Widget):
         for queen in self.queen_list:
             for i in queen.ants_list:
                 if i.status == 'return_food':
-                    distance = Vector(i.ant.pos).distance(queen.queen.pos)
+                    distance = Vector(i.ant.pos).distance(queen.marker.pos)
                     if distance <= 25:
                         i.food -= 25
                         queen.food += 25
@@ -513,13 +503,13 @@ class AntHill(App):
     game = None
     def build(self):
         self.game = Game()
-        Clock.schedule_interval(self.game.update, 1.0 / 60.0)
+        Clock.schedule_interval(self.game.update, 1.0 / 40.0)
         return self.game
 
     def on_stop(self):
             plt.plot(self.game.time_history, self.game.queen_number_history, 'b', label='Number of queens')
-            plt.plot(self.game.time_history, self.game.ant_number_history, 'g-', label='Number of ants')
-            plt.plot(self.game.time_history, self.game.avg_gene_value_history, 'r--', label='Avarage gene value')
+            plt.plot(self.game.time_history, self.game.ant_number_history, 'g', label='Number of ants')
+            plt.plot(self.game.time_history, self.game.avg_gene_value_history, 'r', label='Avarage gene value')
             plt.xlabel('Time')
             plt.legend()
             plt.savefig('ant_plot.png')
