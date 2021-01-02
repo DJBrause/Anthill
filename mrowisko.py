@@ -38,7 +38,7 @@ class Ant(Widget):
         self.red = 0.5
         self.blue = 0.5
         self.green = 0.5
-        self.life_span = self.generate_life_span()
+        self.life_span = 10
         self.ant = Ellipse(size=(15, 15))
         Color(self.red, self.blue, self.green)
         self.ant_center = [self.ant.pos[0]+(self.ant.size[0]/2), self.ant.pos[1]+(self.ant.size[1]/2)]
@@ -70,8 +70,7 @@ class Ant(Widget):
         self.check_food_collision()
 
     def generate_life_span(self):
-        age = random.randint(250, 400)
-        return age + (self.gene * 3)
+        self.life_span = random.randint(250, 350) + (self.gene * 10)
 
     def communicate(self):
         pass
@@ -99,7 +98,7 @@ class Ant(Widget):
     def return_food(self):
         if self.owning_queen != None and self.food >= 50:
             try:
-                self.waypoint = self.owning_queen.marker.pos
+                self.waypoint = self.owning_queen.queen.pos
                 self.vel = (self.waypoint[0] - self.ant.pos[0]) / 50, (self.waypoint[1] - self.ant.pos[1]) / 50
                 self.ant.pos = Vector(self.vel) + self.ant.pos
 
@@ -187,7 +186,7 @@ class Queen(Widget):
         self.gene = 0
         self.waypoint = self.generate_waypoint()
         self.position = self.generate_waypoint()
-        self.life_span = self.generate_life_span()
+        self.life_span = 10
         self.red = self.generate_random() / 10
         self.blue = self.generate_random() / 10
         self.green = self.generate_random() / 10
@@ -217,8 +216,7 @@ class Queen(Widget):
         return self.waypoint
 
     def generate_life_span(self):
-        age = random.randint(400, 500)
-        return age + (self.gene * 3)
+        self.life_span = random.randint(400, 500) + (self.gene * 10)
 
     def search(self):
         self.status = 'search'
@@ -328,9 +326,10 @@ class Game(Widget):
             self.avg_gene_value_label = Label(text="Avarage gene value: {}".format(self.avg_gene_value), font_size=20, pos=(80, 80),
                                      color=[1, .3, .5, 1])
 
-        self.initial_queen.gene = 1
+        self.initial_queen.gene = 0
+        self.initial_queen.generate_life_span()
+        print(self.initial_queen.life_span)
         self.queen_list.append(self.initial_queen)
-
 
     def gather_data(self):
         if self.time % 60 == 0:
@@ -357,7 +356,6 @@ class Game(Widget):
 
     def update(self, dt):
         self.time += 1
-
         for queen in self.queen_list:
             queen.check_status()
             if queen.status == 'lay_eggs':
@@ -379,6 +377,7 @@ class Game(Widget):
         self.queen_counter.text = "Number of queens: {}".format(str(len(self.queen_list)))
         self.avg_gene_value_label.text = "Avarage gene value: {}".format(str(round(self.avg_gene_value, 2)))
         self.gather_data()
+        self.extinction()
 
     def check_for_death(self):
         for i in self.food_list:
@@ -412,7 +411,7 @@ class Game(Widget):
                     queen.ants_list.remove(i)
 
     def create_food(self):
-        if len(self.food_list) < 50:
+        if len(self.food_list) < 80:
             with self.canvas:
                 self.new_food = Food_Source()
             self.food_list.append(self.new_food)
@@ -428,7 +427,7 @@ class Game(Widget):
                 self.egg.egg.pos = self.egg.owning_queen.queen.pos
                 if id(queen) == id(self.egg.owning_queen):
                     queen.eggs_list.append(self.egg)
-                queen.food -= (15 + (queen.gene/10))
+                queen.food -= (10 + (queen.gene/10))
 
     def ant_from_egg(self):
         chance = 97
@@ -443,6 +442,7 @@ class Game(Widget):
                         self.ant.owning_queen = egg.owning_queen
                         queen.ants_list.append(self.ant)
                         self.ant.ant_color()
+                        self.ant.generate_life_span()
                         self.ant.ant.pos = egg.egg.pos
                         self.canvas.remove(egg.egg)
                         queen.eggs_list.remove(egg)
@@ -453,6 +453,7 @@ class Game(Widget):
                         self.new_queen.reset_ant_list()
                         mutation = self.new_queen.gene_mutation()
                         self.new_queen.gene = egg.gene + int(mutation)
+                        self.new_queen.generate_life_span()
                         self.new_queen.queen.pos = egg.egg.pos
                         self.canvas.remove(egg.egg)
                         queen.eggs_list.remove(egg)
@@ -461,6 +462,7 @@ class Game(Widget):
                         #TEST
                         print("New queen ID: ", id(self.new_queen))
                         print("Gene value: ", self.new_queen.gene)
+                        print("New queen life span: ", self.new_queen.life_span)
                     else:
                         pass
                 else:
@@ -478,26 +480,30 @@ class Game(Widget):
             for i in queen.ants_list:
                 if i.status == 'return_food':
                     distance = Vector(i.ant.pos).distance(queen.marker.pos)
-                    if distance <= 25:
+                    if distance <= 30:
                         i.food -= 25
                         queen.food += 25
                         i.status = 'search'
 
     def check_for_ant_collision(self):
-        all_ants = []
+        all_ants = set(())
 
         for queen in self.queen_list:
             for ant in queen.ants_list:
-                all_ants.append(ant)
+                all_ants.add(ant)
 
         for i in all_ants:
             for y in all_ants:
                 distance = Vector(i.ant.pos).distance(y.ant.pos)
-                if distance <= 10 and i != y:
+                if i != y and distance <= 10:
                     i.bump()
                     y.bump()
                 else:
                     pass
+
+    def extinction(self):
+        if len(self.queen_list) == 0:
+            App.get_running_app().stop(self)
 
 class AntHill(App):
     game = None
@@ -512,7 +518,7 @@ class AntHill(App):
             plt.plot(self.game.time_history, self.game.avg_gene_value_history, 'r', label='Avarage gene value')
             plt.xlabel('Time')
             plt.legend()
-            plt.savefig('ant_plot.png')
+            plt.savefig('ant_plot.png', dpi=600)
             plt.show()
 
 if __name__ == "__main__":
