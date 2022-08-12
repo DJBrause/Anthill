@@ -8,7 +8,11 @@ from kivy.uix.label import Label
 from kivy.clock import Clock
 from kivy.config import Config
 from matplotlib import pyplot as plt
+from functools import lru_cache
 import random
+import logging
+import timeit
+import time
 
 Config.set('input', 'mouse', 'mouse,multitouch_on_demand')
 Window.size = (1024, 800)
@@ -52,9 +56,9 @@ class Ant(Widget):
             Color(self.owning_queen.red, self.owning_queen.blue, self.owning_queen.green)
 
     def generate_waypoint(self):
-        self.random_x = random.randint(-50, Window.width - 30)
-        self.random_y = random.randint(0, Window.height - 30)
-        self.waypoint = [self.random_x, self.random_y]
+        random_x = random.randint(-50, Window.width - 30)
+        random_y = random.randint(0, Window.height - 30)
+        self.waypoint = [random_x, random_y]
         return self.waypoint
 
     def search(self):
@@ -96,7 +100,7 @@ class Ant(Widget):
             pass
 
     def return_food(self):
-        if self.owning_queen != None and self.food >= 50:
+        if self.owning_queen is not None and self.food >= 50:
             try:
                 self.waypoint = self.owning_queen.queen.pos
                 self.vel = (self.waypoint[0] - self.ant.pos[0]) / 50, (self.waypoint[1] - self.ant.pos[1]) / 50
@@ -110,7 +114,7 @@ class Ant(Widget):
     def check_food_collision(self):
         for i in Game.food_set:
             distance = Vector(self.ant.pos).distance(i.food_source.pos)
-            if distance <= i.random_size:
+            if distance <= float(i.random_size/2 + self.ant.size[0]/2):
                 if i.size[0] > 0:
                     self.food_pos = i.food_source.pos
                     self.eat(i)
@@ -151,7 +155,7 @@ class Ant(Widget):
     def bump(self):
         self.status = 'bump'
         if self.bump_timer > 0:
-            if self.x_modifier == None:
+            if self.x_modifier is None:
                 self.x_modifier = self.waypoint_modifier()
                 self.y_modifier = self.waypoint_modifier()
             self.red = self.red - 0.3
@@ -167,6 +171,7 @@ class Ant(Widget):
             self.green = self.green
             self.bump_timer = random.randint(45, 60)
             self.status = 'search'
+
 
 class Queen(Widget):
     vel_x = NumericProperty(0)
@@ -274,6 +279,7 @@ class Egg(Widget):
     def reset_egg_ownership(self):
         self.owning_queen = None
 
+
 class Food_Source(Widget):
     timer = random.randint(100, 150)
     random_size = NumericProperty(0)
@@ -305,6 +311,7 @@ class Game(Widget):
     avg_gene_value_history = []
     food_set = set()
     set_of_queens = set()
+    set_of_ants = set()
     egg = ObjectProperty(None)
     ant_counter = ObjectProperty(None)
     ant_number = NumericProperty(0)
@@ -315,19 +322,12 @@ class Game(Widget):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.ant_number = str(self.ant_number)
-        self.avg_gene_value = str(self.avg_gene_value)
+        self.avg_gene_value = str(round(self.avg_gene_value, 2))
         with self.canvas:
             self.initial_queen = Queen()
-            self.ant_counter = Label(text="Number of ants: {}".format(self.ant_number), font_size=20, pos=(60, 100),
-                                     color=[1, .3, .5, 1])
-            self.queen_counter = Label(text="Number of queens: {}".format(str(len(self.set_of_queens))), font_size=20, pos=(60, 120),
-                                     color=[1, .3, .5, 1])
-            self.avg_gene_value_label = Label(text="Avarage gene value: {}".format(self.avg_gene_value), font_size=20, pos=(80, 80),
-                                     color=[1, .3, .5, 1])
 
         self.initial_queen.gene = 0
         self.initial_queen.generate_life_span()
-        print(self.initial_queen.life_span)
         self.set_of_queens.add(self.initial_queen)
 
     def gather_data(self):
@@ -338,9 +338,9 @@ class Game(Widget):
             self.avg_gene_value_history.append(self.avg_gene_value)
 
     def count_ants(self):
-        self.ant_number = 0
-        for queen in self.set_of_queens:
-            self.ant_number += len(queen.set_of_ants)
+        self.ant_number = len(self.set_of_ants)
+        # for queen in self.set_of_queens:
+        #     self.ant_number += len(queen.set_of_ants)
         return self.ant_number
 
     def avg_gene_value_fun(self):
@@ -363,25 +363,38 @@ class Game(Widget):
                 ant.check_status()
 
         self.create_food()
+
         for i in self.food_set:
             i.entropy()
         self.check_for_death()
-        if self.time % 3 ==0:
-            self.check_for_ant_collision()
         self.ant_from_egg()
         self.feed_queen()
-        self.check_queen_collision()
+        self.collision_grid_partition()
         self.count_ants()
         self.avg_gene_value_fun()
-        self.ant_counter.text = "Number of ants: {}".format(self.ant_number)
-        self.queen_counter.text = "Number of queens: {}".format(str(len(self.set_of_queens)))
-        self.avg_gene_value_label.text = "Avarage gene value: {}".format(str(round(self.avg_gene_value, 2)))
         self.gather_data()
         self.extinction()
+        self.update_labels()
+
+    def update_labels(self):
+        try:
+            self.canvas.children.remove(self.ant_counter.canvas)
+            self.canvas.children.remove(self.queen_counter.canvas)
+            self.canvas.children.remove(self.avg_gene_value_label.canvas)
+        except AttributeError:
+            pass
+        with self.canvas:
+            self.ant_counter = Label(text="Number of ants: {}".format(self.ant_number), font_size=20, pos=(60, 100),
+                                     color=[1, .3, .5, 1])
+            self.queen_counter = Label(text="Number of queens: {}".format(str(len(self.set_of_queens))), font_size=20, pos=(60, 120),
+                                     color=[1, .3, .5, 1])
+            self.avg_gene_value_label = Label(text="Avarage gene value: {}".format(self.avg_gene_value), font_size=20, pos=(80, 80),
+                                     color=[1, .3, .5, 1])
 
     def check_for_death(self):
         set_of_queens_copy = self.set_of_queens.copy()
         food_set_copy = self.food_set.copy()
+        set_of_ants_copy = self.set_of_ants.copy()
         for i in food_set_copy:
             if i.random_size < 20:
                 self.canvas.remove(i.food_source)
@@ -398,6 +411,7 @@ class Game(Widget):
 
                 if len(queen.set_of_ants) > 0:
                     for ant in set_of_ants_copy:
+                        self.set_of_ants.remove(ant)
                         self.canvas.remove(ant.ant)
                         queen.set_of_ants.remove(ant)
 
@@ -405,19 +419,31 @@ class Game(Widget):
                     self.canvas.remove(queen.marker)
                     self.canvas.remove(queen.queen)
                     self.set_of_queens.remove(queen)
-            else:
-                for a in set_of_ants_copy:
-                    a.food -= .005
-                    a.life_span -= .05
-                    if a.life_span <= 0 or a.food <= 0:
-                        queen.set_of_ants.remove(a)
-                        self.canvas.remove(a.ant)
+            # else:
+            #     for a in set_of_ants_copy:
+            #         a.food -= .005
+            #         a.life_span -= .05
+            #         if a.life_span <= 0 or a.food <= 0:
+            #             queen.set_of_ants.remove(a)
+            #             self.canvas.remove(a.ant)
+
+        for ant in set_of_ants_copy:
+            ant.food -= .005
+            ant.life_span -= .05
+            if ant.life_span <= 0 or ant.food <= 0:
+                for queen in self.set_of_queens:
+                    queen_set_of_ants_copy = queen.set_of_ants.copy()
+                    for queens_ant in queen_set_of_ants_copy:
+                        if ant == queens_ant:
+                            queen.set_of_ants.remove(ant)
+                self.set_of_ants.remove(ant)
+                self.canvas.remove(ant.ant)
 
     def create_food(self):
-        if len(self.food_set) < 80:
+        if len(self.food_set) < 100:
             with self.canvas:
-                self.new_food = Food_Source()
-            self.food_set.add(self.new_food)
+                new_food = Food_Source()
+            self.food_set.add(new_food)
 
     def lay_eggs(self):
         for queen in self.set_of_queens:
@@ -445,6 +471,7 @@ class Game(Widget):
                         self.ant.gene = egg.gene
                         self.ant.owning_queen = egg.owning_queen
                         queen.set_of_ants.add(self.ant)
+                        self.set_of_ants.add(self.ant)
                         self.ant.ant_color()
                         self.ant.generate_life_span()
                         self.ant.ant.pos = egg.egg.pos
@@ -462,11 +489,6 @@ class Game(Widget):
                         self.canvas.remove(egg.egg)
                         queen.eggs_list.remove(egg)
                         self.set_of_queens.add(self.new_queen)
-
-                        #TEST
-                        print("New queen ID: ", id(self.new_queen))
-                        print("Gene value: ", self.new_queen.gene)
-                        print("New queen life span: ", self.new_queen.life_span)
                     else:
                         pass
                 else:
@@ -479,28 +501,53 @@ class Game(Widget):
                     i.queen_pos = i.owning_queen.pos
                     i.status = 'return_food'
 
-    def check_queen_collision(self):
+    def check_queen_collision(self, left_x, right_x, up_y, low_y):
+        queens_within_grid_square = []
+        ants_within_grid_square = []
         for queen in self.set_of_queens:
+            if left_x >= queen.queen.pos[0] <= right_x:
+                if up_y >= queen.queen.pos[1] <= low_y:
+                    queens_within_grid_square.append(queen)
             for i in queen.set_of_ants:
+                if left_x >= i.pos[0] <= right_x:
+                    if up_y >= i.pos[1] <= low_y:
+                        ants_within_grid_square.append(i)
                 if i.status == 'return_food':
                     distance = Vector(i.ant.pos).distance(queen.marker.pos)
-                    if distance <= 30:
+                    if distance <= float(queen.size[0]/2 + i.ant.size[0]/2):
                         i.food -= 25
                         queen.food += 25
                         i.status = 'search'
 
-    def check_for_ant_collision(self):
+    def collision_grid_partition(self):
+        x_axis_partitions = 8
+        y_axis_partitions = 6
+        window_width = Window.size[0]
+        window_heigth = Window.size[1]
+        grid_square_width = window_width/x_axis_partitions
+        grid_square_heigth = window_heigth/y_axis_partitions
 
-        all_ants = set()
+        for i in range(y_axis_partitions):
+            for z in range(x_axis_partitions):
+                left_end_x = (grid_square_width * (z + 1)) - grid_square_width
+                right_end_x = (grid_square_width * (z + 1))
+                upper_end_y = (grid_square_heigth * (i + 1)) - grid_square_heigth
+                lower_end_y = (grid_square_heigth * (i + 1))
+                self.check_queen_collision(left_end_x, right_end_x, upper_end_y, lower_end_y)
+                self.check_for_ant_collision(left_end_x, right_end_x, upper_end_y, lower_end_y)
 
-        for queen in self.set_of_queens:
-            for ant in queen.set_of_ants:
-                all_ants.add(ant)
+    def check_for_ant_collision(self, left_x, right_x, up_y, low_y):
+        ants_within_grid_square = []
 
-        for i in all_ants:
-            for y in all_ants:
+        for i in self.set_of_ants:
+            if left_x <= i.ant.pos[0] <= right_x:
+                if up_y <= i.ant.pos[1] <= low_y:
+                    ants_within_grid_square.append(i)
+
+        for i in ants_within_grid_square:
+            for y in ants_within_grid_square:
                 distance = Vector(i.ant.pos).distance(y.ant.pos)
-                if i != y and distance <= 10:
+                if i != y and distance <= float(i.ant.size[0]/2 + y.ant.size[0]/2):
                     i.bump()
                     y.bump()
                 else:
@@ -510,22 +557,33 @@ class Game(Widget):
         if len(self.set_of_queens) == 0:
             App.get_running_app().stop(self)
 
+
 class AntHill(App):
     game = None
+
     def build(self):
         self.game = Game()
         Clock.schedule_interval(self.game.update, 1.0 / 40.0)
         return self.game
 
     def on_stop(self):
-            plt.plot(self.game.time_history, self.game.queen_number_history, 'b', label='Number of queens')
-            plt.plot(self.game.time_history, self.game.ant_number_history, 'g', label='Number of ants')
-            plt.plot(self.game.time_history, self.game.avg_gene_value_history, 'r', label='Avarage gene value')
-            plt.xlabel('Time')
-            plt.legend()
-            plt.savefig('ant_plot.png', dpi=600)
-            plt.show()
+        plt.plot(self.game.time_history, self.game.queen_number_history, 'b', label='Number of queens')
+        plt.plot(self.game.time_history, self.game.ant_number_history, 'g', label='Number of ants')
+        plt.plot(self.game.time_history, self.game.avg_gene_value_history, 'r', label='Avarage gene value')
+        plt.xlabel('Time')
+        plt.legend()
+        plt.savefig('ant_plot.png', dpi=600)
+        plt.show()
+
 
 if __name__ == "__main__":
     app = AntHill()
     app.run()
+
+# To test app performance:
+# In terminal:
+# python -m cProfile -o p0.prof mrowisko.py
+# After the program closes:
+# snakeviz p0.prof
+
+
